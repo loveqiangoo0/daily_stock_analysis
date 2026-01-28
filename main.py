@@ -361,24 +361,27 @@ def main() -> int:
         logger.warning(warning)
     
     # 解析股票列表
-    stock_codes = None
+    stock_codes = set()
     if args.stocks:
-        stock_codes = [code.strip() for code in args.stocks.split(',') if code.strip()]
+        stock_codes = {code.strip() for code in args.stocks.split(',') if code.strip()}
         logger.info(f"使用命令行指定的股票列表: {stock_codes}")
-    elif config.dynamic_stock_select:
-        # 动态选股模式：自动获取成交额前N只股票
-        from src.dynamic_stock_selector import get_top_stocks_by_volume
-        logger.info(f"🔄 启用动态选股模式，正在获取成交额前{config.dynamic_stock_count}只股票...")
-        
-        dynamic_stocks = get_top_stocks_by_volume(config.dynamic_stock_count)
-        
-        if dynamic_stocks:
-            stock_codes = dynamic_stocks
-            logger.info(f"✅ 动态选股完成，共选出 {len(stock_codes)} 只股票")
-        else:
-            logger.warning("⚠️ 动态选股失败，使用 .env 中配置的股票列表作为备选")
-            stock_codes = None  # 后续会使用 config.stock_list
     
+    # 动态选股模式：自动获取成交额前N只股票
+    from src.dynamic_stock_selector import get_top_stocks_by_volume
+    logger.info(f"🔄 启用动态选股模式，正在获取成交额前{config.dynamic_stock_count}只股票...")
+    
+    dynamic_stocks = get_top_stocks_by_volume(config.dynamic_stock_count)
+    
+    if dynamic_stocks:
+        for stock in dynamic_stocks:
+            stock_codes.add(stock)
+
+        logger.info(f"✅ 动态选股完成，共选出 {len(stock_codes)} 只股票")
+    else:
+        logger.warning("⚠️ 动态选股失败，使用 .env 中配置的股票列表作为备选")
+        stock_codes = set(config.stock_list)  # 后续会使用 config.stock_list
+    
+    stock_codes = list(stock_codes)
     # === 启动 WebUI (如果启用) ===
     # 优先级: 命令行参数 > 配置文件
     start_webui = (args.webui or args.webui_only or config.webui_enabled) and os.getenv("GITHUB_ACTIONS") != "true"

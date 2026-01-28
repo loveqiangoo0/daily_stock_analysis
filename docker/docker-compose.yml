@@ -61,4 +61,4 @@ services:
     container_name: stock-webui
     command: ["python", "main.py", "--webui-only"]
     ports:
-      - "8000:8000"
+      - "18000:8000"
