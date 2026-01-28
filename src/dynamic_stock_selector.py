@@ -10,7 +10,7 @@
 3. 提供容错机制，选股失败时返回空列表
 """
 import logging
-import akshare as ak
+import requests
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def get_top_stocks_by_volume(n: int = 10) -> List[str]:
     """
     获取A股当日成交额最大的N只股票
     
-    数据来源：akshare - 东方财富实时行情
+    数据来源：东方财富网 API（直接HTTP请求，不依赖第三方库）
     
     Args:
         n: 返回股票数量，默认10只
@@ -37,38 +37,80 @@ def get_top_stocks_by_volume(n: int = 10) -> List[str]:
     try:
         logger.info(f"🔍 正在获取A股成交额前{n}只股票...")
         
-        # 获取沪深A股实时行情（包含成交额）
-        # 数据列：代码、名称、最新价、涨跌幅、涨跌额、成交量、成交额、振幅、最高、最低、今开、昨收
-        df = ak.stock_zh_a_spot_em()
+        # 东方财富行情 API
+        # pz: 每页数量
+        # po: 1=降序排列
+        # fid: f6=成交额排序
+        # fields: f12=代码, f14=名称, f2=最新价, f6=成交额, f3=涨跌幅
+        url = (
+            f"http://push2.eastmoney.com/api/qt/clist/get"
+            f"?pn=1&pz={n}&po=1&np=1"
+            f"&ut=bd1d9ddb04089700cf9c27f6f7426281"
+            f"&fltt=2&invt=2&fid=f6"
+            f"&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+            f"&fields=f12,f14,f2,f3,f6"
+        )
         
-        if df.empty:
+        # 直接请求，显式禁用代理（国内数据源）
+        proxies = {
+            'http': None,
+            'https': None
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'http://quote.eastmoney.com/'
+        }
+        response = requests.get(url, timeout=10, proxies=proxies, headers=headers)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # 检查返回数据
+        if data.get('rc') != 0 or not data.get('data', {}).get('diff'):
             logger.warning("⚠️ 未获取到A股行情数据")
             return []
         
-        # 按成交额降序排序，取前N只
-        df_sorted = df.sort_values(by='成交额', ascending=False)
-        top_stocks = df_sorted.head(n)
+        stocks = data['data']['diff']
         
-        # 提取股票代码
-        stock_codes = top_stocks['代码'].tolist()
+        if not stocks:
+            logger.warning("⚠️ 行情数据为空")
+            return []
         
-        # 打印选中的股票信息（代码、名称、成交额）
-        logger.info(f"✅ 成功获取成交额前{n}只股票:")
-        for idx, row in top_stocks.iterrows():
-            amount_str = f"{row['成交额'] / 1e8:.2f}亿" if row['成交额'] >= 1e8 else f"{row['成交额'] / 1e4:.2f}万"
-            logger.info(f"  {row['代码']} {row['名称']:8s} 成交额: {amount_str}")
+        # 提取股票代码和信息
+        stock_codes = []
+        logger.info(f"✅ 成功获取成交额前{len(stocks)}只股票:")
+        
+        for stock in stocks:
+            code = stock.get('f12', '')  # 股票代码
+            name = stock.get('f14', '')  # 股票名称
+            volume = stock.get('f6', 0)  # 成交额
+            
+            if code:
+                stock_codes.append(code)
+                
+                # 格式化成交额显示
+                if volume >= 1e8:
+                    amount_str = f"{volume / 1e8:.2f}亿"
+                else:
+                    amount_str = f"{volume / 1e4:.2f}万"
+                
+                logger.info(f"  {code} {name:8s} 成交额: {amount_str}")
         
         return stock_codes
         
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ 网络请求失败: {e}")
+        return []
     except Exception as e:
         logger.error(f"❌ 获取动态选股失败: {e}", exc_info=True)
-        # 失败时返回空列表，由调用方决定后续处理（使用备选列表或退出）
         return []
 
 
 def get_top_stocks_by_change(n: int = 10, exclude_st: bool = True) -> List[str]:
     """
     获取A股当日涨幅最大的N只股票（备用策略）
+    
+    数据来源：东方财富网 API
     
     Args:
         n: 返回股票数量
@@ -78,30 +120,69 @@ def get_top_stocks_by_change(n: int = 10, exclude_st: bool = True) -> List[str]:
         股票代码列表
     """
     try:
-        logger.info(f"🔍 正在获取A股涨幅前{n}只股票...")
+        logger.info(f"🔍 正在获取A股涨幅前{n * 2}只股票（将过滤ST后取前{n}只）...")
         
-        df = ak.stock_zh_a_spot_em()
+        # 东方财富行情 API
+        # fid: f3=涨跌幅排序
+        url = (
+            f"http://push2.eastmoney.com/api/qt/clist/get"
+            f"?pn=1&pz={n * 2}&po=1&np=1"
+            f"&ut=bd1d9ddb04089700cf9c27f6f7426281"
+            f"&fltt=2&invt=2&fid=f3"
+            f"&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+            f"&fields=f12,f14,f2,f3,f6"
+        )
         
-        if df.empty:
+        # 显式禁用代理（国内数据源）
+        proxies = {
+            'http': None,
+            'https': None
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'http://quote.eastmoney.com/'
+        }
+        response = requests.get(url, timeout=10, proxies=proxies, headers=headers)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get('rc') != 0 or not data.get('data', {}).get('diff'):
             logger.warning("⚠️ 未获取到A股行情数据")
             return []
         
-        # 排除ST股票
-        if exclude_st:
-            df = df[~df['名称'].str.contains('ST', na=False)]
+        stocks = data['data']['diff']
         
-        # 按涨跌幅降序排序
-        df_sorted = df.sort_values(by='涨跌幅', ascending=False)
-        top_stocks = df_sorted.head(n)
+        if not stocks:
+            logger.warning("⚠️ 行情数据为空")
+            return []
         
-        stock_codes = top_stocks['代码'].tolist()
-        
+        # 提取股票代码，过滤ST
+        stock_codes = []
         logger.info(f"✅ 成功获取涨幅前{n}只股票:")
-        for idx, row in top_stocks.iterrows():
-            logger.info(f"  {row['代码']} {row['名称']:8s} 涨跌幅: {row['涨跌幅']:.2f}%")
+        
+        for stock in stocks:
+            code = stock.get('f12', '')
+            name = stock.get('f14', '')
+            change = stock.get('f3', 0)  # 涨跌幅
+            
+            # 排除ST股票
+            if exclude_st and name and 'ST' in name:
+                continue
+            
+            if code:
+                stock_codes.append(code)
+                logger.info(f"  {code} {name:8s} 涨跌幅: {change:.2f}%")
+                
+                # 达到目标数量就停止
+                if len(stock_codes) >= n:
+                    break
         
         return stock_codes
         
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ 网络请求失败: {e}")
+        return []
     except Exception as e:
         logger.error(f"❌ 获取涨幅排名失败: {e}", exc_info=True)
         return []
@@ -114,12 +195,23 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    print("=== 测试动态选股 ===\n")
+    print("=" * 60)
+    print("测试动态选股功能 - 东方财富API直连")
+    print("=" * 60)
+    print()
     
     # 测试成交额选股
+    print("【测试1】成交额排名")
     stocks_volume = get_top_stocks_by_volume(5)
-    print(f"\n成交额前5: {stocks_volume}\n")
+    print(f"\n结果: {stocks_volume}")
+    print()
     
     # 测试涨幅选股
+    print("【测试2】涨幅排名")
     stocks_change = get_top_stocks_by_change(5)
-    print(f"\n涨幅前5: {stocks_change}\n")
+    print(f"\n结果: {stocks_change}")
+    print()
+    
+    print("=" * 60)
+    print("测试完成")
+    print("=" * 60)
