@@ -30,6 +30,10 @@ class Config:
     
     # === 自选股配置 ===
     stock_list: List[str] = field(default_factory=list)
+    
+    # 动态选股配置
+    dynamic_stock_select: bool = False  # 是否启用动态选股（成交额前N）
+    dynamic_stock_count: int = 10       # 动态选股数量
 
     # === 飞书云文档配置 ===
     feishu_app_id: Optional[str] = None
@@ -286,6 +290,8 @@ class Config:
         
         return cls(
             stock_list=stock_list,
+            dynamic_stock_select=os.getenv('DYNAMIC_STOCK_SELECT', 'false').lower() == 'true',
+            dynamic_stock_count=int(os.getenv('DYNAMIC_STOCK_COUNT', '10')),
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
