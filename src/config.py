@@ -96,8 +96,8 @@ class Config:
     discord_main_channel_id: Optional[str] = None  # Discord 主频道 ID
     discord_webhook_url: Optional[str] = None  # Discord Webhook URL
     
-    # 单股推送模式：每分析完一只股票立即推送，而不是汇总后推送
-    single_stock_notify: bool = False
+    # 单股推送模式：每分析完一只股票立即推送，而不是汇总后推送（默认启用）
+    single_stock_notify: bool = True
 
     # 报告类型：simple(精简) 或 full(完整)
     report_type: str = "simple"
@@ -319,7 +319,7 @@ class Config:
             discord_bot_token=os.getenv('DISCORD_BOT_TOKEN'),
             discord_main_channel_id=os.getenv('DISCORD_MAIN_CHANNEL_ID'),
             discord_webhook_url=os.getenv('DISCORD_WEBHOOK_URL'),
-            single_stock_notify=os.getenv('SINGLE_STOCK_NOTIFY', 'false').lower() == 'true',
+            single_stock_notify=os.getenv('SINGLE_STOCK_NOTIFY', 'true').lower() == 'true',
             report_type=os.getenv('REPORT_TYPE', 'simple').lower(),
             analysis_delay=float(os.getenv('ANALYSIS_DELAY', '0')),
             feishu_max_bytes=int(os.getenv('FEISHU_MAX_BYTES', '20000')),
