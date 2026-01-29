@@ -33,7 +33,7 @@ class Config:
     
     # 动态选股配置
     dynamic_stock_select: bool = False  # 是否启用动态选股（成交额前N）
-    dynamic_stock_count: int = 10       # 动态选股数量
+    dynamic_stock_count: int = 5        # 动态选股数量（默认5只）
 
     # === 飞书云文档配置 ===
     feishu_app_id: Optional[str] = None
