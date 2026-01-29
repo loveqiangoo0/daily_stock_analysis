@@ -190,18 +190,6 @@ def parse_arguments() -> argparse.Namespace:
         help='跳过大盘复盘分析'
     )
     
-    parser.add_argument(
-        '--webui',
-        action='store_true',
-        help='启动本地配置 WebUI'
-    )
-    
-    parser.add_argument(
-        '--webui-only',
-        action='store_true',
-        help='仅启动 WebUI 服务，不自动执行分析（通过 /analysis API 手动触发）'
-    )
-    
     return parser.parse_args()
 
 
@@ -382,31 +370,7 @@ def main() -> int:
         stock_codes = set(config.stock_list)  # 后续会使用 config.stock_list
     
     stock_codes = list(stock_codes)
-    # === 启动 WebUI (如果启用) ===
-    # 优先级: 命令行参数 > 配置文件
-    start_webui = (args.webui or args.webui_only or config.webui_enabled) and os.getenv("GITHUB_ACTIONS") != "true"
     
-    if start_webui:
-        try:
-            from webui import run_server_in_thread
-            run_server_in_thread(host=config.webui_host, port=config.webui_port)
-            start_bot_stream_clients(config)
-        except Exception as e:
-            logger.error(f"启动 WebUI 失败: {e}")
-    
-    # === 仅 WebUI 模式：不自动执行分析 ===
-    if args.webui_only:
-        logger.info("模式: 仅 WebUI 服务")
-        logger.info(f"WebUI 运行中: http://{config.webui_host}:{config.webui_port}")
-        logger.info("通过 /analysis?code=xxx 接口手动触发分析")
-        logger.info("按 Ctrl+C 退出...")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("\n用户中断，程序退出")
-        return 0
-
     try:
         # 模式1: 仅大盘复盘
         if args.market_review:
@@ -451,16 +415,6 @@ def main() -> int:
         run_full_analysis(config, args, stock_codes)
         
         logger.info("\n程序执行完成")
-        
-        # 如果启用了 WebUI 且是非定时任务模式，保持程序运行以便访问 WebUI
-        if start_webui and not (args.schedule or config.schedule_enabled):
-            logger.info("WebUI 运行中 (按 Ctrl+C 退出)...")
-            try:
-                # 简单的保持活跃循环
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
         
         return 0
         
