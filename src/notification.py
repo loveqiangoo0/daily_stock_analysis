@@ -1053,6 +1053,82 @@ class NotificationService:
         
         return content
     
+    def generate_bark_summary(self, results: List[AnalysisResult], max_chars: int = 1000) -> str:
+        """
+        生成 Bark 超精简版日报（严格控制字符数）
+        
+        Bark 通常限制在 500-1500 字符，需要极度精简
+        
+        Args:
+            results: 分析结果列表
+            max_chars: 最大字符数（默认1000）
+            
+        Returns:
+            超精简版 Markdown 内容
+        """
+        report_date = datetime.now().strftime('%m-%d')
+        
+        # 按评分排序
+        sorted_results = sorted(results, key=lambda x: x.sentiment_score, reverse=True)
+        
+        # 统计
+        buy_count = sum(1 for r in results if r.operation_advice in ['买入', '加仓', '强烈买入'])
+        sell_count = sum(1 for r in results if r.operation_advice in ['卖出', '减仓', '强烈卖出'])
+        hold_count = len(results) - buy_count - sell_count
+        
+        lines = [
+            f"📊 {report_date} ({len(results)}只)",
+            f"🟢{buy_count} 🟡{hold_count} 🔴{sell_count}",
+            ""
+        ]
+        
+        # 逐只添加，直到超过字符限制
+        current_length = len("\n".join(lines))
+        added_count = 0
+        
+        for result in sorted_results:
+            emoji = result.get_emoji()
+            
+            # 构建单只股票信息（超精简格式）
+            if hasattr(result, 'dimensions') and result.dimensions:
+                # 有4维度评分，显示详细评分
+                stock_line = (
+                    f"{emoji} {result.name}({result.code})\n"
+                    f"{result.operation_advice} {result.sentiment_score}分\n"
+                    f"💎{result.value_score} 💰{result.funding_score} "
+                    f"📰{result.news_score} 📈{result.trend_score}"
+                )
+            else:
+                # 无4维度评分，显示基础信息
+                stock_line = (
+                    f"{emoji} {result.name}({result.code})\n"
+                    f"{result.operation_advice} {result.sentiment_score}分"
+                )
+            
+            # 检查是否会超出限制
+            test_length = current_length + len(stock_line) + 2  # +2 for \n\n
+            if test_length > max_chars and added_count >= 3:  # 至少显示3只
+                remaining = len(sorted_results) - added_count
+                if remaining > 0:
+                    lines.append(f"\n... 还有{remaining}只")
+                break
+            
+            lines.append(stock_line)
+            lines.append("")
+            current_length = test_length
+            added_count += 1
+        
+        # 底部精简提示
+        lines.append("*AI分析仅供参考*")
+        
+        content = "\n".join(lines)
+        
+        # 最终检查，如果还是超了就强制截断
+        if len(content) > max_chars:
+            content = content[:max_chars-3] + "..."
+        
+        return content
+    
     def generate_single_stock_report(self, result: AnalysisResult) -> str:
         """
         生成单只股票的分析报告（用于单股推送模式 #55）
@@ -2377,6 +2453,15 @@ class NotificationService:
                         logger.error(f"自定义 Webhook {i+1}（钉钉）推送失败")
                     continue
 
+                # Bark：分批发送（避免字数限制）
+                if self._is_bark_webhook(url):
+                    if self._send_bark_chunked(url, content, max_chars=1000):
+                        logger.info(f"自定义 Webhook {i+1}（Bark）推送成功")
+                        success_count += 1
+                    else:
+                        logger.error(f"自定义 Webhook {i+1}（Bark）推送失败")
+                    continue
+
                 # 其他 Webhook：单次发送
                 payload = self._build_custom_webhook_payload(url, content)
                 if self._post_custom_webhook(url, payload, timeout=30):
@@ -2395,6 +2480,167 @@ class NotificationService:
     def _is_dingtalk_webhook(url: str) -> bool:
         url_lower = (url or "").lower()
         return 'dingtalk' in url_lower or 'oapi.dingtalk.com' in url_lower
+    
+    @staticmethod
+    def _is_bark_webhook(url: str) -> bool:
+        """判断是否为 Bark Webhook"""
+        url_lower = (url or "").lower()
+        return 'api.day.app' in url_lower or 'bark' in url_lower
+    
+    def _send_bark_chunked(self, url: str, content: str, max_chars: int = 1000) -> bool:
+        """
+        分批发送到 Bark（避免字数限制）
+        
+        Bark 通常限制在 500-1500 字符，将长消息分成多条发送
+        
+        Args:
+            url: Bark Webhook URL
+            content: 消息内容
+            max_chars: 每条消息最大字符数
+            
+        Returns:
+            是否全部发送成功
+        """
+        import time
+        
+        # 按段落分割内容
+        chunks = self._split_bark_content(content, max_chars)
+        
+        logger.info(f"Bark 分批推送：共 {len(chunks)} 条消息")
+        
+        success_count = 0
+        for i, chunk in enumerate(chunks):
+            try:
+                # 添加分页标记
+                if len(chunks) > 1:
+                    title = f"股票分析 ({i+1}/{len(chunks)})"
+                else:
+                    title = "股票分析"
+                
+                payload = {
+                    "title": title,
+                    "body": chunk,
+                    "group": "stock",
+                    "sound": "calypso" if i == 0 else ""  # 只有第一条有提示音
+                }
+                
+                if self._post_custom_webhook(url, payload, timeout=30):
+                    success_count += 1
+                    logger.debug(f"Bark 第 {i+1}/{len(chunks)} 条发送成功")
+                else:
+                    logger.error(f"Bark 第 {i+1}/{len(chunks)} 条发送失败")
+                
+                # 避免发送过快，间隔0.5秒
+                if i < len(chunks) - 1:
+                    time.sleep(0.5)
+                    
+            except Exception as e:
+                logger.error(f"Bark 第 {i+1} 条发送异常: {e}")
+        
+        logger.info(f"Bark 分批推送完成：成功 {success_count}/{len(chunks)}")
+        return success_count == len(chunks)
+    
+    def _split_bark_content(self, content: str, max_chars: int = 1000) -> list:
+        """
+        智能分割内容为适合 Bark 的多条消息
+        
+        按以下规则分割：
+        1. 优先按股票分割（每只股票独立成条）
+        2. 如果单只股票超长，按段落分割
+        3. 保持 Markdown 格式完整性
+        
+        Args:
+            content: 原始内容
+            max_chars: 每条最大字符数
+            
+        Returns:
+            分割后的消息列表
+        """
+        import re
+        
+        chunks = []
+        lines = content.split('\n')
+        
+        # 提取标题和统计信息（第一条必含）
+        header_lines = []
+        content_start_idx = 0
+        
+        for i, line in enumerate(lines[:30]):
+            # 标题行、统计行
+            if any(keyword in line for keyword in ['📊', '📅', '股票', '分析', '🟢', '🟡', '🔴']):
+                header_lines.append(line)
+            elif line.strip() == '' and header_lines:
+                content_start_idx = i + 1
+                break
+            elif header_lines:
+                content_start_idx = i
+                break
+        
+        # 找到所有股票块的起始位置（包含 emoji + 代码的行）
+        stock_starts = []
+        for i, line in enumerate(lines):
+            # 匹配股票标题行：emoji + 名称 + (代码)
+            if re.search(r'[🟢🟡🔴🟠💚❌⚪].*[\(（]\d{6}[\)）]', line):
+                stock_starts.append(i)
+        
+        # 如果没找到股票块，按字符数简单分割
+        if not stock_starts:
+            current_chunk = '\n'.join(header_lines) + '\n\n'
+            for line in lines[content_start_idx:]:
+                if len(current_chunk) + len(line) + 1 <= max_chars:
+                    current_chunk += line + '\n'
+                else:
+                    if current_chunk.strip():
+                        chunks.append(current_chunk.strip())
+                    current_chunk = line + '\n'
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+            return chunks
+        
+        # 按股票块分割
+        for i, start_idx in enumerate(stock_starts):
+            # 确定这只股票的结束位置（下一只股票开始或文件结束）
+            if i < len(stock_starts) - 1:
+                end_idx = stock_starts[i + 1]
+            else:
+                end_idx = len(lines)
+            
+            # 提取这只股票的所有行
+            stock_lines = lines[start_idx:end_idx]
+            stock_content = '\n'.join(stock_lines).strip()
+            
+            # 如果是第一只股票，加上头部信息
+            if i == 0:
+                header_text = '\n'.join(header_lines)
+                full_content = header_text + '\n\n' + stock_content
+            else:
+                full_content = stock_content
+            
+            # 如果单只股票超长，继续分割
+            if len(full_content) > max_chars:
+                # 按段落分割
+                paragraphs = full_content.split('\n\n')
+                current_chunk = ''
+                for para in paragraphs:
+                    if len(current_chunk) + len(para) + 2 <= max_chars:
+                        if current_chunk:
+                            current_chunk += '\n\n' + para
+                        else:
+                            current_chunk = para
+                    else:
+                        if current_chunk.strip():
+                            chunks.append(current_chunk.strip())
+                        current_chunk = para
+                if current_chunk.strip():
+                    chunks.append(current_chunk.strip())
+            else:
+                chunks.append(full_content)
+        
+        # 添加免责声明到最后一条
+        if chunks:
+            chunks[-1] += '\n\n*AI分析仅供参考*'
+        
+        return chunks
 
     def _post_custom_webhook(self, url: str, payload: dict, timeout: int = 30) -> bool:
         headers = {
@@ -2549,11 +2795,13 @@ class NotificationService:
             }
         
         # Bark (iOS 推送)
+        # 注意：Bark 会在 send_to_custom 中使用分批发送，这里不会被调用
         if 'api.day.app' in url_lower:
             return {
-                "title": "股票分析报告",
-                "body": content[:4000],  # Bark 限制
-                "group": "stock"
+                "title": "股票分析",
+                "body": content,
+                "group": "stock",
+                "sound": "calypso"
             }
         
         # 通用格式（兼容大多数服务）
@@ -2563,7 +2811,7 @@ class NotificationService:
             "message": content,
             "body": content
         }
-
+    
     def _send_via_source_context(self, content: str) -> bool:
         """
         使用消息上下文（如钉钉/飞书会话）发送一份报告
