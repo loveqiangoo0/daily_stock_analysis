@@ -994,7 +994,7 @@ class GeminiAnalyzer:
             chip = context['chip']
             profit_ratio = chip.get('profit_ratio', 0)
             prompt += f"""
-### 筹码分布数据（效率指标）
+### 筹码分布数据（资金面参考）
 | 指标 | 数值 | 健康标准 |
 |------|------|----------|
 | **获利比例** | **{profit_ratio:.1%}** | 70-90%时警惕 |
@@ -1002,6 +1002,28 @@ class GeminiAnalyzer:
 | 90%筹码集中度 | {chip.get('concentration_90', 0):.2%} | <15%为集中 |
 | 70%筹码集中度 | {chip.get('concentration_70', 0):.2%} | |
 | 筹码状态 | {chip.get('chip_status', '未知')} | |
+"""
+        
+        # 添加财务数据（价值投资面核心数据）
+        if 'financial' in context and context['financial']:
+            fin = context['financial']
+            prompt += f"""
+### 财务指标数据（价值投资面核心）
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| **ROE（净资产收益率）** | **{fin.get('roe', 'N/A')}%** | >15%优秀, 10-15%良好, <10%一般 |
+| **营收增长率** | **{fin.get('revenue_growth', 'N/A')}%** | 同比增长率 |
+| **净利润增长率** | **{fin.get('profit_growth', 'N/A')}%** | 同比增长率 |
+| 销售毛利率 | {fin.get('gross_profit_margin', 'N/A')}% | 盈利能力指标 |
+| 销售净利率 | {fin.get('net_profit_margin', 'N/A')}% | 盈利质量指标 |
+| 财报日期 | {fin.get('report_date', 'N/A')} | 数据时效性 |
+
+**数据来源**: {fin.get('data_source', 'unknown')}
+"""
+        else:
+            prompt += """
+### 财务指标数据
+⚠️ **财务数据暂时无法获取**，价值面分析主要依据PE/PB估值和行业对比。
 """
         
         # 添加趋势分析结果（基于交易理念的预判）

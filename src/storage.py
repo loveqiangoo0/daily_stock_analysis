@@ -458,6 +458,22 @@ class DatabaseManager:
             # 均线形态判断
             context['ma_status'] = self._analyze_ma_status(today_data)
         
+        # 获取财务指标数据（ROE、增长率等）
+        try:
+            from data_provider.financial_fetcher import FinancialFetcher
+            financial_fetcher = FinancialFetcher()
+            financial_data = financial_fetcher.get_financial_indicators(code)
+            
+            if financial_data:
+                context['financial'] = financial_data.to_dict()
+                logger.debug(f"[财务数据] {code} 已添加到context: ROE={financial_data.roe}")
+            else:
+                logger.debug(f"[财务数据] {code} 未获取到财务指标")
+                context['financial'] = None
+        except Exception as e:
+            logger.warning(f"[财务数据] {code} 获取财务指标失败: {e}")
+            context['financial'] = None
+        
         return context
     
     def _analyze_ma_status(self, data: StockDaily) -> str:
