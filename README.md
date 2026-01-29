@@ -88,7 +88,7 @@
 | Secret 名称 | 说明 | 必填 |
 |------------|------|:----:|
 | `DYNAMIC_STOCK_SELECT` | 是否启用动态选股（默认 `true`） | 可选 |
-| `DYNAMIC_STOCK_COUNT` | 动态选股数量（默认 `10`） | 可选 |
+| `DYNAMIC_STOCK_COUNT` | 动态选股数量（默认 `5`） | 可选 |
 | `STOCK_LIST` | 自选股代码（仅在 `DYNAMIC_STOCK_SELECT=false` 时使用） | 可选 |
 | `TAVILY_API_KEYS` | [Tavily](https://tavily.com/) 搜索 API（新闻搜索） | 推荐 |
 | `BOCHA_API_KEYS` | [博查搜索](https://open.bocha.cn/) Web Search API（中文搜索优化，支持AI摘要，多个key用逗号分隔） | 可选 |

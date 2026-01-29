@@ -120,7 +120,7 @@ jobs:
           # 动态选股配置（默认启用）
           # ==========================================
           DYNAMIC_STOCK_SELECT: ${{ vars.DYNAMIC_STOCK_SELECT || secrets.DYNAMIC_STOCK_SELECT || 'true' }}
-          DYNAMIC_STOCK_COUNT: ${{ vars.DYNAMIC_STOCK_COUNT || secrets.DYNAMIC_STOCK_COUNT || '10' }}
+          DYNAMIC_STOCK_COUNT: ${{ vars.DYNAMIC_STOCK_COUNT || secrets.DYNAMIC_STOCK_COUNT || '5' }}
           
           # ==========================================
           # 运行配置

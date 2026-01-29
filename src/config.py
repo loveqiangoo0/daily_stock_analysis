@@ -285,7 +285,7 @@ class Config:
         return cls(
             stock_list=stock_list,
             dynamic_stock_select=os.getenv('DYNAMIC_STOCK_SELECT', 'true').lower() == 'true',
-            dynamic_stock_count=int(os.getenv('DYNAMIC_STOCK_COUNT', '10')),
+            dynamic_stock_count=int(os.getenv('DYNAMIC_STOCK_COUNT', '5')),
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
