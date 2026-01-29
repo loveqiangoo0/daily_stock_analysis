@@ -11,11 +11,23 @@
 """
 import logging
 import requests
+import time
 from typing import List, Optional
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
 
 
+# 重试装饰器：网络错误时最多重试3次，指数退避
+_retry_decorator = retry(
+    retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    reraise=True
+)
+
+
+@_retry_decorator
 def get_top_stocks_by_volume(n: int = 10) -> List[str]:
     """
     获取A股当日成交额最大的N只股票
@@ -29,7 +41,7 @@ def get_top_stocks_by_volume(n: int = 10) -> List[str]:
         股票代码列表，例如 ['600519', '000001', '300750', ...]
         失败时返回空列表 []
         
-    示例：
+    示例:
         >>> codes = get_top_stocks_by_volume(10)
         >>> print(codes)
         ['600519', '000001', '300750', ...]
@@ -56,12 +68,23 @@ def get_top_stocks_by_volume(n: int = 10) -> List[str]:
             'http': None,
             'https': None
         }
+        # 模拟真实浏览器请求头
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
             'Referer': 'http://quote.eastmoney.com/'
         }
-        response = requests.get(url, timeout=10, proxies=proxies, headers=headers)
+        
+        # 使用 session 保持连接
+        session = requests.Session()
+        response = session.get(url, timeout=15, proxies=proxies, headers=headers)
         response.raise_for_status()
+        
+        # 添加延迟，避免请求过快
+        time.sleep(0.5)
         
         data = response.json()
         
@@ -106,6 +129,7 @@ def get_top_stocks_by_volume(n: int = 10) -> List[str]:
         return []
 
 
+@_retry_decorator
 def get_top_stocks_by_change(n: int = 10, exclude_st: bool = True) -> List[str]:
     """
     获取A股当日涨幅最大的N只股票（备用策略）
@@ -138,12 +162,23 @@ def get_top_stocks_by_change(n: int = 10, exclude_st: bool = True) -> List[str]:
             'http': None,
             'https': None
         }
+        # 模拟真实浏览器请求头
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
             'Referer': 'http://quote.eastmoney.com/'
         }
-        response = requests.get(url, timeout=10, proxies=proxies, headers=headers)
+        
+        # 使用 session 保持连接
+        session = requests.Session()
+        response = session.get(url, timeout=15, proxies=proxies, headers=headers)
         response.raise_for_status()
+        
+        # 添加延迟，避免请求过快
+        time.sleep(0.5)
         
         data = response.json()
         
