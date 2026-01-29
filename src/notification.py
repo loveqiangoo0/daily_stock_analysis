@@ -592,7 +592,8 @@ class NotificationService:
         # 逐个股票的决策仪表盘
         for result in sorted_results:
             signal_text, signal_emoji, signal_tag = self._get_signal_level(result)
-            dashboard = result.dashboard if hasattr(result, 'dashboard') and result.dashboard else {}
+            # 确保 dashboard 是字典类型（修复 'str' object has no attribute 'get' 错误）
+            dashboard = result.dashboard if hasattr(result, 'dashboard') and isinstance(result.dashboard, dict) else {}
             
             # 股票名称（优先使用 dashboard 或 result 中的名称）
             stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
@@ -885,7 +886,8 @@ class NotificationService:
         
         for result in sorted_results:
             signal_text, signal_emoji, _ = self._get_signal_level(result)
-            dashboard = result.dashboard if hasattr(result, 'dashboard') and result.dashboard else {}
+            # 确保 dashboard 是字典类型
+            dashboard = result.dashboard if hasattr(result, 'dashboard') and isinstance(result.dashboard, dict) else {}
             core = dashboard.get('core_conclusion', {}) if dashboard else {}
             battle = dashboard.get('battle_plan', {}) if dashboard else {}
             intel = dashboard.get('intelligence', {}) if dashboard else {}
@@ -1143,7 +1145,8 @@ class NotificationService:
         """
         report_date = datetime.now().strftime('%Y-%m-%d %H:%M')
         signal_text, signal_emoji, _ = self._get_signal_level(result)
-        dashboard = result.dashboard if hasattr(result, 'dashboard') and result.dashboard else {}
+        # 确保 dashboard 是字典类型
+        dashboard = result.dashboard if hasattr(result, 'dashboard') and isinstance(result.dashboard, dict) else {}
         core = dashboard.get('core_conclusion', {}) if dashboard else {}
         battle = dashboard.get('battle_plan', {}) if dashboard else {}
         intel = dashboard.get('intelligence', {}) if dashboard else {}
