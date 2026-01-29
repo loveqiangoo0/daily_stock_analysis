@@ -572,10 +572,17 @@ class NotificationService:
             ])
             for r in sorted_results:
                 emoji = r.get_emoji()
-                report_lines.append(
-                    f"{emoji} **{r.name}({r.code})**: {r.operation_advice} | "
-                    f"评分 {r.sentiment_score} | {r.trend_prediction}"
-                )
+                # 如果有4维度评分，显示详细评分
+                if hasattr(r, 'dimensions') and r.dimensions:
+                    report_lines.append(
+                        f"{emoji} **{r.name}({r.code})**: {r.operation_advice} | "
+                        f"总分{r.sentiment_score} (💎{r.value_score} 💰{r.funding_score} 📰{r.news_score} 📈{r.trend_score})"
+                    )
+                else:
+                    report_lines.append(
+                        f"{emoji} **{r.name}({r.code})**: {r.operation_advice} | "
+                        f"评分 {r.sentiment_score} | {r.trend_prediction}"
+                    )
             report_lines.extend([
                 "",
                 "---",
@@ -633,6 +640,42 @@ class NotificationService:
                     report_lines.append(f"**📢 最新动态**: {intel['latest_news']}")
                 
                 report_lines.append("")
+            
+            # ========== 4维度评分（新增）==========
+            dimensions = result.dimensions if hasattr(result, 'dimensions') and result.dimensions else {}
+            if dimensions:
+                report_lines.extend([
+                    "### 🎯 综合评分",
+                    "",
+                    f"**总分**: {result.sentiment_score}/100 "
+                    f"(💎价值{result.value_score}×0.4 + 💰资金{result.funding_score}×0.25 "
+                    f"+ 📰消息{result.news_score}×0.25 + 📈趋势{result.trend_score}×0.1)",
+                    "",
+                ])
+                
+                # 各维度详情
+                value_dim = dimensions.get('value_investment', {})
+                funding_dim = dimensions.get('funding_flow', {})
+                news_dim = dimensions.get('news_sentiment', {})
+                trend_dim = dimensions.get('trend_analysis', {})
+                
+                report_lines.extend([
+                    "| 维度 | 评分 | 关键指标 | 总结 |",
+                    "|------|------|---------|------|",
+                    f"| 💎 价值投资面 | **{result.value_score}**/100 | "
+                    f"PE:{value_dim.get('pe_ratio', 'N/A')} PB:{value_dim.get('pb_ratio', 'N/A')} ROE:{value_dim.get('roe', 'N/A')} | "
+                    f"{value_dim.get('summary', 'N/A')} |",
+                    f"| 💰 资金面 | **{result.funding_score}**/100 | "
+                    f"{funding_dim.get('fund_trend', 'N/A')} | "
+                    f"{funding_dim.get('summary', 'N/A')} |",
+                    f"| 📰 消息面 | **{result.news_score}**/100 | "
+                    f"{news_dim.get('sentiment', 'N/A')} | "
+                    f"{news_dim.get('summary', 'N/A')} |",
+                    f"| 📈 趋势面 | **{result.trend_score}**/100 | "
+                    f"{trend_dim.get('ma_alignment', 'N/A')} | "
+                    f"{trend_dim.get('summary', 'N/A')} |",
+                    "",
+                ])
             
             # ========== 核心结论 ==========
             core = dashboard.get('core_conclusion', {}) if dashboard else {}
@@ -1038,6 +1081,33 @@ class NotificationService:
             f"> {report_date} | 评分: **{result.sentiment_score}** | {result.trend_prediction}",
             "",
         ]
+        
+        # 4维度评分（新增）
+        if hasattr(result, 'dimensions') and result.dimensions:
+            lines.extend([
+                "### 🎯 综合评分",
+                "",
+                f"💎价值{result.value_score} 💰资金{result.funding_score} "
+                f"📰消息{result.news_score} 📈趋势{result.trend_score}",
+                "",
+            ])
+            
+            # 各维度简要总结
+            dimensions = result.dimensions
+            summaries = []
+            if dimensions.get('value_investment', {}).get('summary'):
+                summaries.append(f"💎 {dimensions['value_investment']['summary']}")
+            if dimensions.get('funding_flow', {}).get('summary'):
+                summaries.append(f"💰 {dimensions['funding_flow']['summary']}")
+            if dimensions.get('news_sentiment', {}).get('summary'):
+                summaries.append(f"📰 {dimensions['news_sentiment']['summary']}")
+            if dimensions.get('trend_analysis', {}).get('summary'):
+                summaries.append(f"📈 {dimensions['trend_analysis']['summary']}")
+            
+            if summaries:
+                for s in summaries:
+                    lines.append(s)
+                lines.append("")
         
         # 核心决策（一句话）
         one_sentence = core.get('one_sentence', result.analysis_summary) if core else result.analysis_summary
