@@ -161,6 +161,8 @@ class MoneyFlowFetcher:
         """
         获取个股资金流向数据
         
+        优先级：Tushare Pro（高质量，需600积分）> AkShare（免费）
+        
         Args:
             stock_code: 股票代码（6位数字）
             trade_date: 交易日期 YYYYMMDD（默认最近交易日）
@@ -168,12 +170,13 @@ class MoneyFlowFetcher:
         Returns:
             MoneyFlowData 对象，失败返回 None
         """
-        # 优先使用 Tushare
+        # 优先使用 Tushare（如果配置了Token且有权限）
         result = self._get_moneyflow_from_tushare(stock_code, trade_date)
         
         if result is None:
-            # 备选：东方财富（TODO）
-            logger.debug(f"[资金流] Tushare 获取失败，暂无备选数据源")
+            # 备选：AkShare（免费，无需配置）
+            logger.debug(f"[资金流] Tushare 获取失败，尝试 AkShare...")
+            result = self._get_moneyflow_from_akshare(stock_code)
         
         return result
     
@@ -277,9 +280,78 @@ class MoneyFlowFetcher:
             
             return None
     
+    def _get_moneyflow_from_akshare(self, stock_code: str) -> Optional[MoneyFlowData]:
+        """
+        从 AkShare 获取资金流数据（免费备选方案）
+        
+        接口：stock_individual_fund_flow（个股资金流向）
+        文档：https://akshare.akfamily.xyz/data/stock/stock.html#id170
+        
+        特点：免费、无需配置、数据来自东方财富网
+        """
+        try:
+            import akshare as ak
+            
+            self._random_sleep()
+            
+            # 判断市场（沪市/深市）
+            if stock_code.startswith(('6', '9', '5')):
+                market = 'sh'
+            else:
+                market = 'sz'
+            
+            logger.debug(f"[API调用] ak.stock_individual_fund_flow(stock={stock_code}, market={market})")
+            df = ak.stock_individual_fund_flow(stock=stock_code, market=market)
+            
+            if df is None or df.empty:
+                logger.warning(f"[资金流] {stock_code} AkShare 返回空数据")
+                return None
+            
+            logger.debug(f"[API返回] AkShare stock_individual_fund_flow: {len(df)} 条记录")
+            logger.debug(f"[API返回] 列名: {df.columns.tolist()}")
+            
+            # 取最新一天的数据（第一行）
+            latest = df.iloc[0]
+            
+            # AkShare 列名映射：
+            # '主力净流入-净额' - 主力资金净流入（元）
+            # '主力净流入-净占比' - 主力资金净流入占比（%）
+            # '超大单净流入-净额', '大单净流入-净额', '中单净流入-净额', '小单净流入-净额'
+            
+            # 将元转换为万元
+            main_net_inflow = latest.get('主力净流入-净额', 0) or 0
+            main_net_inflow_wan = main_net_inflow / 10000  # 元 -> 万元
+            
+            net_elg = (latest.get('超大单净流入-净额', 0) or 0) / 10000
+            net_lg = (latest.get('大单净流入-净额', 0) or 0) / 10000
+            net_md = (latest.get('中单净流入-净额', 0) or 0) / 10000
+            net_sm = (latest.get('小单净流入-净额', 0) or 0) / 10000
+            
+            data = MoneyFlowData(
+                code=stock_code,
+                trade_date=str(latest.get('日期', '')).replace('-', ''),  # 转换为 YYYYMMDD 格式
+                net_mf_amount=main_net_inflow_wan,
+                net_mf_elg=net_elg,
+                net_mf_lg=net_lg,
+                net_mf_md=net_md,
+                net_mf_sm=net_sm,
+                main_net_inflow=main_net_inflow_wan,
+                main_net_inflow_rate=latest.get('主力净流入-净占比'),
+                data_source="akshare_individual_flow",
+            )
+            
+            logger.info(f"[资金流] {stock_code} AkShare获取成功: {data.get_main_flow_summary()}")
+            return data
+            
+        except Exception as e:
+            logger.error(f"[资金流] {stock_code} AkShare 获取失败: {e}")
+            return None
+    
     def get_north_moneyflow(self, stock_code: str, days: int = 5) -> Optional[Dict[str, Any]]:
         """
         获取北向资金流向（最近N日汇总）
+        
+        优先级：Tushare Pro（详细数据）> AkShare（免费）
         
         Args:
             stock_code: 股票代码
@@ -288,6 +360,18 @@ class MoneyFlowFetcher:
         Returns:
             包含北向资金数据的字典，失败返回 None
         """
+        # 优先使用 Tushare
+        result = self._get_north_moneyflow_from_tushare(stock_code, days)
+        
+        if result is None:
+            # 备选：AkShare
+            logger.debug(f"[北向资金] Tushare 获取失败，尝试 AkShare...")
+            result = self._get_north_moneyflow_from_akshare(stock_code, days)
+        
+        return result
+    
+    def _get_north_moneyflow_from_tushare(self, stock_code: str, days: int = 5) -> Optional[Dict[str, Any]]:
+        """从 Tushare 获取北向资金（原实现）"""
         if not self._tushare_api:
             logger.debug("[北向资金] Tushare API 未初始化")
             return None
@@ -355,6 +439,78 @@ class MoneyFlowFetcher:
             else:
                 logger.debug(f"[北向资金] {stock_code} 获取失败: {e}")
             
+            return None
+    
+    def _get_north_moneyflow_from_akshare(self, stock_code: str, days: int = 5) -> Optional[Dict[str, Any]]:
+        """
+        从 AkShare 获取北向资金（免费备选方案）
+        
+        接口：stock_hsgt_individual_em（个股北向资金历史数据）
+        文档：https://akshare.akfamily.xyz/data/stock/stock.html#id219
+        
+        特点：免费、无需配置、数据来自东方财富网
+        注意：只能获取到在沪深港通范围内的股票数据
+        """
+        try:
+            import akshare as ak
+            
+            self._random_sleep()
+            
+            logger.debug(f"[API调用] ak.stock_hsgt_individual_em(symbol={stock_code})")
+            df = ak.stock_hsgt_individual_em(symbol=stock_code)
+            
+            if df is None or df.empty:
+                logger.debug(f"[北向资金] {stock_code} 可能不在沪深港通范围内")
+                return None
+            
+            logger.debug(f"[API返回] AkShare stock_hsgt_individual_em: {len(df)} 条记录")
+            logger.debug(f"[API返回] 列名: {df.columns.tolist()}")
+            
+            # 取最近N条记录
+            recent_df = df.head(min(days, len(df)))
+            
+            # AkShare 列名：'日期', '收盘价', '涨跌幅', '北上资金-持股数', '北上资金-持股数变化', 
+            #             '北上资金-持股数变化率', '北上资金-持股市值', '北上资金-占流通股比'
+            
+            # 计算北向资金净流入（基于持股数变化和股价）
+            # 注意：这里是近似值，精确值需要成交数据
+            total_change = 0
+            for _, row in recent_df.iterrows():
+                share_change = row.get('北上资金-持股数变化', 0) or 0
+                close_price = row.get('收盘价', 0) or 0
+                if share_change and close_price:
+                    # 持股数变化（股）* 股价 = 资金变化（元）
+                    value_change = share_change * close_price
+                    total_change += value_change
+            
+            # 转换为万元
+            total_net_amount = total_change / 10000
+            avg_net_amount = total_net_amount / len(recent_df) if len(recent_df) > 0 else 0
+            
+            # 判断趋势
+            if total_net_amount > 10000:  # 1亿元以上
+                trend = "持续流入"
+            elif total_net_amount > 0:
+                trend = "小幅流入"
+            elif total_net_amount > -10000:
+                trend = "小幅流出"
+            else:
+                trend = "持续流出"
+            
+            result = {
+                'code': stock_code,
+                'days': days,
+                'total_net_amount': total_net_amount,  # 单位：万元
+                'avg_net_amount': avg_net_amount,  # 单位：万元
+                'trend': trend,
+                'data_source': 'akshare_hsgt',
+            }
+            
+            logger.info(f"[北向资金] {stock_code} AkShare获取成功: {trend}, 累计{total_net_amount/10000:.2f}亿元")
+            return result
+            
+        except Exception as e:
+            logger.debug(f"[北向资金] {stock_code} AkShare 获取失败: {e}")
             return None
 
 
