@@ -1026,6 +1026,45 @@ class GeminiAnalyzer:
 ⚠️ **财务数据暂时无法获取**，价值面分析主要依据PE/PB估值和行业对比。
 """
         
+        # 添加资金流数据（资金面核心数据）
+        if 'moneyflow' in context and context['moneyflow']:
+            mf = context['moneyflow']
+            main_inflow = mf.get('main_net_inflow', 0) or 0
+            main_inflow_yi = main_inflow / 10000  # 转换为亿元
+            
+            prompt += f"""
+### 资金流向数据（资金面核心）
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| **主力资金净流入** | **{main_inflow_yi:.2f}亿元** | 特大单+大单净流入 |
+| 主力净流入占比 | {mf.get('main_net_inflow_rate', 'N/A')}% | 占成交额比例 |
+| 大单净流入 | {(mf.get('net_mf_lg', 0) or 0) / 10000:.2f}亿元 | 单笔>20万 |
+| 中单净流入 | {(mf.get('net_mf_md', 0) or 0) / 10000:.2f}亿元 | 单笔4-20万 |
+| 小单净流入 | {(mf.get('net_mf_sm', 0) or 0) / 10000:.2f}亿元 | 单笔<4万 |
+| 交易日期 | {mf.get('trade_date', 'N/A')} | 数据时效性 |
+
+**资金流向趋势**: {'流入' if main_inflow_yi > 0 else '流出'}
+"""
+            
+            # 添加北向资金（如果有）
+            if 'north_moneyflow' in context and context['north_moneyflow']:
+                north = context['north_moneyflow']
+                north_inflow_yi = north.get('total_net_amount', 0) / 10000
+                
+                prompt += f"""
+### 北向资金（外资动向）
+| 指标 | 数值 |
+|------|------|
+| 最近{north.get('days', 5)}日累计净流入 | {north_inflow_yi:.2f}亿元 |
+| 日均净流入 | {north.get('avg_net_amount', 0) / 10000:.2f}亿元 |
+| **趋势判断** | **{north.get('trend', '未知')}** |
+"""
+        else:
+            prompt += """
+### 资金流向数据
+⚠️ **资金流数据暂时无法获取**（需要Tushare Pro 600积分），资金面分析主要依据筹码分布数据。
+"""
+        
         # 添加趋势分析结果（基于交易理念的预判）
         if 'trend_analysis' in context:
             trend = context['trend_analysis']

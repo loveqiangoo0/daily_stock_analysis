@@ -474,6 +474,33 @@ class DatabaseManager:
             logger.warning(f"[财务数据] {code} 获取财务指标失败: {e}")
             context['financial'] = None
         
+        # 获取资金流数据（主力资金、北向资金等）
+        try:
+            from data_provider.moneyflow_fetcher import MoneyFlowFetcher
+            moneyflow_fetcher = MoneyFlowFetcher()
+            
+            # 获取个股资金流
+            moneyflow_data = moneyflow_fetcher.get_moneyflow(code)
+            if moneyflow_data:
+                context['moneyflow'] = moneyflow_data.to_dict()
+                logger.debug(f"[资金流] {code} 已添加到context: {moneyflow_data.get_main_flow_summary()}")
+            else:
+                logger.debug(f"[资金流] {code} 未获取到资金流数据")
+                context['moneyflow'] = None
+            
+            # 获取北向资金（如果是沪深港通标的）
+            north_data = moneyflow_fetcher.get_north_moneyflow(code, days=5)
+            if north_data:
+                context['north_moneyflow'] = north_data
+                logger.debug(f"[北向资金] {code} 已添加到context: {north_data['trend']}")
+            else:
+                context['north_moneyflow'] = None
+                
+        except Exception as e:
+            logger.warning(f"[资金流] {code} 获取资金流数据失败: {e}")
+            context['moneyflow'] = None
+            context['north_moneyflow'] = None
+        
         return context
     
     def _analyze_ma_status(self, data: StockDaily) -> str:
