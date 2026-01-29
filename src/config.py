@@ -268,9 +268,9 @@ class Config:
             if code.strip()
         ]
         
-        # 如果没有配置，使用默认的示例股票
+        # 如果没有配置，使用空列表（将由动态选股填充）
         if not stock_list:
-            stock_list = ['600519', '000001', '300750']
+            stock_list = []
         
         # 解析搜索引擎 API Keys（支持多个 key，逗号分隔）
         bocha_keys_str = os.getenv('BOCHA_API_KEYS', '')
@@ -284,7 +284,7 @@ class Config:
         
         return cls(
             stock_list=stock_list,
-            dynamic_stock_select=os.getenv('DYNAMIC_STOCK_SELECT', 'false').lower() == 'true',
+            dynamic_stock_select=os.getenv('DYNAMIC_STOCK_SELECT', 'true').lower() == 'true',
             dynamic_stock_count=int(os.getenv('DYNAMIC_STOCK_COUNT', '10')),
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
@@ -411,8 +411,8 @@ class Config:
         """
         warnings = []
         
-        if not self.stock_list:
-            warnings.append("警告：未配置自选股列表 (STOCK_LIST)")
+        if not self.stock_list and not self.dynamic_stock_select:
+            warnings.append("警告：未配置自选股列表 (STOCK_LIST) 且未启用动态选股")
         
         if not self.tushare_token:
             warnings.append("提示：未配置 Tushare Token，将使用其他数据源")

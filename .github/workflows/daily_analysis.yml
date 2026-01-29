@@ -117,12 +117,13 @@ jobs:
           FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
           
           # ==========================================
-          # 自选股配置
+          # 动态选股配置（默认启用）
           # ==========================================
-          STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
+          DYNAMIC_STOCK_SELECT: ${{ vars.DYNAMIC_STOCK_SELECT || secrets.DYNAMIC_STOCK_SELECT || 'true' }}
+          DYNAMIC_STOCK_COUNT: ${{ vars.DYNAMIC_STOCK_COUNT || secrets.DYNAMIC_STOCK_COUNT || '10' }}
           
           # ==========================================
-          # 运行配置 ⬅️ 新增！
+          # 运行配置
           # ==========================================
           REPORT_TYPE: ${{ vars.REPORT_TYPE || secrets.REPORT_TYPE || 'simple' }}
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
@@ -146,7 +147,7 @@ jobs:
           echo "=========================================="
           echo "⏰ 时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
           echo "🎯 运行模式: $MODE"
-          echo "📊 自选股: $STOCK_LIST"
+          echo "📊 动态选股: 成交额前 $DYNAMIC_STOCK_COUNT 只"
           echo "📝 报告类型: $REPORT_TYPE"
           echo ""
           echo "=========================================="
